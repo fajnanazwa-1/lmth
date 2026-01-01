@@ -1,0 +1,147 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>LMTH Page</title></head><body><div id="render-area"></div><script>const formatLMTHText = function formatLMTHText(text) {
+            if (!text) return "";
+            let formatted = text.replace(/(\/n|\/b|\/i|\/r|\/0)\s/g, "$1");
+            formatted = formatted
+                .split('/n').join('<br>')
+                .split('/b').join('<b>')
+                .split('/i').join('<i>')
+                .split('/r').join('</b></i>')
+                .split('/0').join('&#8203;'); // Zero Width Space
+            return formatted;
+        };const renderLMTH = function renderLMTH(code, targetArea) {
+            targetArea.innerHTML = ""; 
+            targetArea.parentElement.style.backgroundColor = "";
+            const lines = code.split('\n');
+            let currentElement = null, currentStyleId = null, styles = {}; 
+
+            lines.forEach(line => {
+                const l = line.trim();
+                if (!l || l.startsWith("#")) return;
+                const getBracketsContent = (str) => {
+                    const f = str.indexOf('('), la = str.lastIndexOf(')');
+                    return (f !== -1 && la !== -1) ? str.substring(f + 1, la) : null;
+                };
+                const val = getBracketsContent(l);
+
+                if (l.startsWith("create new style")) {
+                    const id = val.split('=')[1]?.trim(); styles[id] = {}; currentStyleId = id;
+                } else if (l.startsWith("create new")) {
+                    const id = val.split('=')[1]?.trim();
+                    let el;
+                    if (l.includes("button")) el = document.createElement('button');
+                    else if (l.includes("text")) el = document.createElement('span');
+                    else if (l.includes("input")) el = document.createElement('input');
+                    else if (l.includes("image")) el = document.createElement('img');
+                    el.id = id; el.style.display = "block"; el.style.marginBottom = "5px";
+                    targetArea.appendChild(el); currentStyleId = null;
+                } else if (l.startsWith("id")) {
+                    const name = val?.trim();
+                    if (styles[name]) { currentStyleId = name; currentElement = null; }
+                    else { currentElement = document.getElementById(name); currentStyleId = null; }
+                }
+
+                if (val !== null) {
+                    const applyProp = (prop, value) => {
+                        if (currentElement) currentElement.style[prop] = value;
+                        if (currentStyleId) styles[currentStyleId][prop] = value;
+                    };
+                    if (l.includes("set text to") && currentElement) {
+                        if (currentElement.tagName === "INPUT") currentElement.placeholder = val;
+                        else currentElement.innerHTML = formatLMTHText(val);
+                    }
+                    else if (l.includes("set font size to")) applyProp('fontSize', val);
+                    else if (l.includes("set font to")) applyProp('fontFamily', val);
+                    else if (l.includes("set color to")) applyProp('color', val);
+                    else if (l.includes("set corners to")) applyProp('borderRadius', val);
+                    else if (l.includes("set border to")) applyProp('border', val);
+                    else if (l.includes("set page color to")) targetArea.parentElement.style.backgroundColor = val;
+                    else if (l.includes("set page title to")) document.title = val;
+                    else if (l.includes("set page icon to")) {
+                        let link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+                        link.rel = 'icon'; link.href = val; document.head.appendChild(link);
+                    }
+                    else if (l.includes("set width to")) applyProp('width', val);
+                    else if (l.includes("set height to")) applyProp('height', val);
+                    else if (l.includes("set alignment to")) {
+                        applyProp('textAlign', val);
+                        if (val === "center") { applyProp('marginLeft', 'auto'); applyProp('marginRight', 'auto'); }
+                    }
+                    else if (l.includes("set style to") && currentElement) {
+                        if (styles[val]) Object.assign(currentElement.style, styles[val]);
+                    }
+                    else if (l.includes("set link to") && currentElement) {
+                        if (currentElement.tagName === "IMG") currentElement.src = val;
+                        else { currentElement.style.cursor = "pointer"; currentElement.onclick = () => window.open(val, '_blank'); }
+                    }
+                }
+            });
+        };const lmthCode = `set page title to (LMTH Language help)
+set page icon to (data:image/png;base64,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)
+set page color to (black)
+
+create new text (id = pn1)
+create new text (id = h1)
+create new text (id = h2)
+create new text (id = h3)
+create new text (id = h4)
+create new text (id = l1)
+create new text (id = h5)
+create new text (id = h6)
+create new text (id = w1)
+create new text (id = h7)
+create new image (id = i1)
+create new style (id = normal)
+
+id (normal)
+    set font to (Arial)
+    set font size to (20px)
+    set color to (white)
+
+id (pn1)
+    set text to (/b~ Welcome in the LMTH language help~)
+    set font size to (30px)
+    set font to (Arial)
+    set alignment to (center)
+    set color to (white)
+
+id (h1)
+    set text to (/b 1. Object types: /r /n ·text, /n ·button, /n ·image, /n ·input, /n /i ·style /n /0)
+    set style to (normal)
+
+id (h2)
+    set text to (/b 2. Adding objects: /r /n To add object write: "create new (object type) (id = (name))" /n e.g. "create new text (id = text1)" or "create new button (id = button1) /n /0 )
+    set style to (normal)
+
+id (h3)
+    set text to (/b 3. Specifying ID: /r /n To determine which ID the later code belongs to, you need to write the "id (name)" /n e.g "id (button1)" /n /0)
+    set style to (normal)
+
+id (h4)
+    set text to (/b 4. Determining appearance: /r /n To define how an object should look, we use: /n "set (action) to (value)". /nFor example, "set text to (Welcome!)" or "set font size to (20px)".)
+    set style to (normal)
+
+id (l1)
+    set text to (See all styles commands... /n /0)
+    set font to (Arial)
+    set color to (#1368f0)
+    set link to (styles_commands.html)
+
+id (h5)
+    set text to (/b 5. Page appearance: /n /r You can describe the appearance of the website using theese commands: /n ·set page title to (page name) /n ·set page icon to (page icon url) /n ·set page color to (hex or css color name) /n /0 )
+    set style to (normal)
+
+id (h6)
+    set text to (/b 6. Setting links for objects: /n /r You can set a link for an object that, when clicked, will take you to the specified address. To add this you must write this: "set link to (url)" e.g. "set link to (https://google.com)" or if you want to transfer you to the file enter e.g. "set link to (file-name.html)")
+    set style to (normal)
+
+id (w1)    
+    set text to (WARNNING /n in image objects, "set link to (url)" set a link to the image /n /0)
+    set font to (Arial)
+    set color to (red)
+
+id (i1)
+    set link to (data:image/png;base64,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)
+    set alignment to (center)
+
+
+`;renderLMTH(lmthCode, document.getElementById('render-area'));</script></body></html>

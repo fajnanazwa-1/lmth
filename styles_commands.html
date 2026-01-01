@@ -1,0 +1,103 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>LMTH Page</title></head><body><div id="render-area"></div><script>const formatLMTHText = function formatLMTHText(text) {
+            if (!text) return "";
+            let formatted = text.replace(/(\/n|\/b|\/i|\/r|\/0)\s/g, "$1");
+            formatted = formatted
+                .split('/n').join('<br>')
+                .split('/b').join('<b>')
+                .split('/i').join('<i>')
+                .split('/r').join('</b></i>')
+                .split('/0').join('&#8203;'); // Zero Width Space
+            return formatted;
+        };const renderLMTH = function renderLMTH(code, targetArea) {
+            targetArea.innerHTML = ""; 
+            targetArea.parentElement.style.backgroundColor = "";
+            const lines = code.split('\n');
+            let currentElement = null, currentStyleId = null, styles = {}; 
+
+            lines.forEach(line => {
+                const l = line.trim();
+                if (!l || l.startsWith("#")) return;
+                const getBracketsContent = (str) => {
+                    const f = str.indexOf('('), la = str.lastIndexOf(')');
+                    return (f !== -1 && la !== -1) ? str.substring(f + 1, la) : null;
+                };
+                const val = getBracketsContent(l);
+
+                if (l.startsWith("create new style")) {
+                    const id = val.split('=')[1]?.trim(); styles[id] = {}; currentStyleId = id;
+                } else if (l.startsWith("create new")) {
+                    const id = val.split('=')[1]?.trim();
+                    let el;
+                    if (l.includes("button")) el = document.createElement('button');
+                    else if (l.includes("text")) el = document.createElement('span');
+                    else if (l.includes("input")) el = document.createElement('input');
+                    else if (l.includes("image")) el = document.createElement('img');
+                    el.id = id; el.style.display = "block"; el.style.marginBottom = "5px";
+                    targetArea.appendChild(el); currentStyleId = null;
+                } else if (l.startsWith("id")) {
+                    const name = val?.trim();
+                    if (styles[name]) { currentStyleId = name; currentElement = null; }
+                    else { currentElement = document.getElementById(name); currentStyleId = null; }
+                }
+
+                if (val !== null) {
+                    const applyProp = (prop, value) => {
+                        if (currentElement) currentElement.style[prop] = value;
+                        if (currentStyleId) styles[currentStyleId][prop] = value;
+                    };
+                    if (l.includes("set text to") && currentElement) {
+                        if (currentElement.tagName === "INPUT") currentElement.placeholder = val;
+                        else currentElement.innerHTML = formatLMTHText(val);
+                    }
+                    else if (l.includes("set font size to")) applyProp('fontSize', val);
+                    else if (l.includes("set font to")) applyProp('fontFamily', val);
+                    else if (l.includes("set color to")) applyProp('color', val);
+                    else if (l.includes("set corners to")) applyProp('borderRadius', val);
+                    else if (l.includes("set border to")) applyProp('border', val);
+                    else if (l.includes("set page color to")) targetArea.parentElement.style.backgroundColor = val;
+                    else if (l.includes("set page title to")) document.title = val;
+                    else if (l.includes("set page icon to")) {
+                        let link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+                        link.rel = 'icon'; link.href = val; document.head.appendChild(link);
+                    }
+                    else if (l.includes("set width to")) applyProp('width', val);
+                    else if (l.includes("set height to")) applyProp('height', val);
+                    else if (l.includes("set alignment to")) {
+                        applyProp('textAlign', val);
+                        if (val === "center") { applyProp('marginLeft', 'auto'); applyProp('marginRight', 'auto'); }
+                    }
+                    else if (l.includes("set style to") && currentElement) {
+                        if (styles[val]) Object.assign(currentElement.style, styles[val]);
+                    }
+                    else if (l.includes("set link to") && currentElement) {
+                        if (currentElement.tagName === "IMG") currentElement.src = val;
+                        else { currentElement.style.cursor = "pointer"; currentElement.onclick = () => window.open(val, '_blank'); }
+                    }
+                }
+            });
+        };const lmthCode = `set page title to (LMTH Language help)
+set page icon to (data:image/png;base64,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)
+set page color to (black)
+
+create new text (id = n1)
+create new text (id = h1)
+create new image (id = l1)
+
+id (n1)
+    set text to (~ Style Commands ~)
+    set color to (white)
+    set font to (Arial)
+    set font size to (30px)
+    set alignment to (center)
+
+id (h1)
+    set text to (/b1. set text to (text) /r /n e.g. "set text to (goodbye!)" /n /n /b 2. set font to (font name) /n /r e.g. "set font to (Arial)" /n /n /b3. set font size to (font size) /n /r e.g. "set font size to (30px) /n /n /b 4. set color to (hex or color name) /n /r e.g. "set color to (blue)" or "set color to (#534da1)" /n /n /b 5. set alignment to (left / center / right) /n /r e.g. "set alignment to (center) /n /n /n /b 6. set width to (width) /n /r e.g. "set width to (500px) /n /n /b 7. set height to (height) /n /r e.g. "set height to (30px) /n /n /b 8. set corners to (corners) /n /r e.g. "set corners to (50px) /n /n /b 9. set border to (border style) /n /r e.g. "set border to (2px solid black) /n /n /n /b 10. set page title to (page title) /n /r e.g. "set page title to (My Awesome Page!) /n /n /b 11. set page icon to (page icon url) /n /r e.g. "set page icon to (https://animala.pl/_next/omage/?url=https%3A%2F%2Fapi.animala.pl%2Fuploads%2FDog_niemiecki_c45d7f620c.png&w=1920&q=75) /n /n /b 12. set page color to (hex or color name) /n /r e.g. "set page color to (black)" /n /0)
+    set font to (Arial)
+    set color to (white)
+    set font size to (20px)
+
+id (l1)
+    set link to (data:image/png;base64,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)
+    set alignment to (center)
+
+`;renderLMTH(lmthCode, document.getElementById('render-area'));</script></body></html>

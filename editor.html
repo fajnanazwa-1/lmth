@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>LMTH Pro Editor v1.12 - INPUT VALUES</title>
+    <style>
+        body { margin: 0; display: flex; height: 100vh; font-family: 'Segoe UI', sans-serif; background: #121212; color: white; overflow: hidden; }
+        #editor-wrapper { width: 50%; min-width: 100px; display: flex; flex-direction: column; position: relative; background: #1e1e1e; }
+        #resizer { width: 6px; cursor: col-resize; background: #333; z-index: 10; }
+        #resizer:hover { background: #4a90e2; }
+        #container { position: relative; flex-grow: 1; overflow: hidden; }
+        textarea, #highlight-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            padding: 20px; box-sizing: border-box; font-family: 'Consolas', monospace;
+            font-size: 16px; line-height: 1.5; border: none; outline: none; white-space: pre; overflow-wrap: normal; overflow-x: auto;
+        }
+        textarea { background: transparent; color: transparent; caret-color: white; z-index: 2; resize: none; }
+        #highlight-layer { background: #1e1e1e; color: white; z-index: 1; pointer-events: none; }
+        
+        /* SYNTAX COLORS */
+        .c-create { color: #4a90e2; font-weight: bold; }
+        .c-set { color: #9966ff; }
+        .c-id { color: #59c059; font-weight: bold; }
+        .c-comment { color: #6a9955; font-style: italic; }
+        .c-brackets { color: #ffab19; }
+        .c-tag { color: #ff66cc; font-weight: bold; }
+        .c-var { color: #00ffff; font-weight: bold; }
+        .c-input-val { color: #ffab19; font-weight: bold; }
+
+        #preview-wrapper { flex-grow: 1; min-width: 100px; background: #ffffff; color: black; overflow: auto; }
+        #render-area { padding: 20px; min-height: 100%; }
+        
+        .toolbar { background: #252526; padding: 5px 20px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; color: #ccc; }
+        .export-btn { background: #4a90e2; color: white; border: none; padding: 5px 15px; cursor: pointer; font-weight: bold; border-radius: 3px; }
+        #status { color: #59c059; font-weight: bold; margin-right: 15px; }
+    </style>
+</head>
+<body>
+    <div id="editor-wrapper" style="width: 50%;">
+        <div class="toolbar">
+            <span>LMTH EDITOR v1.12 - INPUT SYSTEM</span>
+            <div><span id="status">Ready</span><button class="export-btn" id="export-html">EXPORT</button></div>
+        </div>
+        <div id="container">
+            <div id="highlight-layer"></div>
+            <textarea id="code-input" spellcheck="false" placeholder="Pisz kod LMTH..."></textarea>
+        </div>
+    </div>
+    <div id="resizer"></div>
+    <div id="preview-wrapper"><div id="render-area"></div></div>
+
+    <script>
+        const input = document.getElementById('code-input');
+        const highlight = document.getElementById('highlight-layer');
+        const renderArea = document.getElementById('render-area');
+        const status = document.getElementById('status');
+        const resizer = document.getElementById('resizer');
+        const editorWrapper = document.getElementById('editor-wrapper');
+        const exportBtn = document.getElementById('export-html');
+
+        let variables = {};
+
+        // RESIZER
+        let isResizing = false;
+        resizer.addEventListener('mousedown', () => { isResizing = true; document.body.style.userSelect = 'none'; });
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            let p = (e.clientX / window.innerWidth) * 100;
+            if (p > 10 && p < 90) editorWrapper.style.width = p + '%';
+        });
+        document.addEventListener('mouseup', () => { isResizing = false; document.body.style.userSelect = 'auto'; });
+
+        // HIGHLIGHTING
+        function applyHighlight(code) {
+            highlight.innerHTML = code
+                .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") 
+                .replace(/#.*$/gm, '<span class="c-comment">$&</span>') 
+                .replace(/\b(create new text|create new button|create new input|create new image|create new style|create new variable)\b/g, '<span class="c-create">$1</span>')
+                .replace(/\b(set text to|set font size to|set font to|set color to|set page color to|set page title to|set page icon to|set alignment to|set width to|set height to|set style to|set link to|set corners to|set border to|set background color to|set variable .* to)\b/g, '<span class="c-set">$1</span>')
+                .replace(/\b(id)\b/g, '<span class="c-id">$1</span>')
+                .replace(/(\/n|\/b|\/i|\/r|\/0)/g, '<span class="c-tag">$1</span>') 
+                .replace(/\(\(variable .*?\)\)/g, '<span class="c-var">$&</span>')
+                .replace(/\(\(value of input id .*?\)\)/g, '<span class="c-input-val">$&</span>') // Nowy kolor dla pobierania inputu
+                .replace(/\(|\)/g, '<span class="c-brackets">$&</span>') + "\n";
+        }
+
+        // TEXT FORMATTING + INPUT/VARIABLE INJECTION
+        function formatLMTHText(text) {
+            if (!text) return "";
+            
+            // 1. Wstawianie wartości z Inputów
+            let processed = text.replace(/\(\(value of input id (.*?)\)\)/g, (match, id) => {
+                let el = document.getElementById(id.trim());
+                return el ? el.value : "";
+            });
+
+            // 2. Wstawianie zmiennych
+            processed = processed.replace(/\(\(variable (.*?)\)\)/g, (match, name) => {
+                return variables[name.trim()] !== undefined ? variables[name.trim()] : match;
+            });
+
+            // 3. Tagi formatujące
+            let formatted = processed.replace(/(\/n|\/b|\/i|\/r|\/0)\s/g, "$1");
+            return formatted.split('/n').join('<br>').split('/b').join('<b>').split('/i').join('<i>').split('/r').join('</b></i>').split('/0').join('&#8203;');
+        }
+
+        // STABLE RENDER ENGINE
+        function renderLMTH(code, targetArea) {
+            targetArea.innerHTML = ""; 
+            targetArea.parentElement.style.backgroundColor = "";
+            const lines = code.split('\n');
+            let currentElement = null, currentStyleId = null, styles = {}; 
+
+            lines.forEach(line => {
+                const l = line.trim();
+                if (!l || l.startsWith("#")) return;
+
+                const getBracketsContent = (str) => {
+                    const f = str.indexOf('('), la = str.lastIndexOf(')');
+                    return (f !== -1 && la !== -1) ? str.substring(f + 1, la) : null;
+                };
+
+                const val = getBracketsContent(l);
+
+                if (l.startsWith("create new variable")) {
+                    if (!val || !val.includes("=")) return;
+                    const name = val.split('=')[1].trim();
+                    if (variables[name] === undefined) variables[name] = "";
+                    return;
+                }
+
+                if (l.startsWith("set variable")) {
+                    const parts = l.split('to');
+                    if (parts.length < 2) return;
+                    const varName = parts[0].replace('set variable', '').trim();
+                    if (val !== null) variables[varName] = formatLMTHText(val);
+                    return;
+                }
+
+                if (l.startsWith("create new")) {
+                    if (!val || !val.includes("=")) return;
+                    const id = val.split('=')[1].trim();
+                    if (l.startsWith("create new style")) {
+                        styles[id] = {}; currentStyleId = id; currentElement = null;
+                    } else {
+                        let el;
+                        if (l.includes("button")) el = document.createElement('button');
+                        else if (l.includes("text")) el = document.createElement('span');
+                        else if (l.includes("input")) {
+                            el = document.createElement('input');
+                            // Reaguj na pisanie w czasie rzeczywistym
+                            el.oninput = () => { renderLMTH(input.value, renderArea); };
+                        }
+                        else if (l.includes("image")) el = document.createElement('img');
+                        if (el) {
+                            el.id = id; el.style.display = "block"; el.style.marginBottom = "5px";
+                            targetArea.appendChild(el); currentStyleId = null; currentElement = el;
+                        }
+                    }
+                    return;
+                }
+
+                if (l.startsWith("id")) {
+                    if (!val) return;
+                    const name = val.trim();
+                    if (styles[name]) { currentStyleId = name; currentElement = null; }
+                    else { currentElement = document.getElementById(name); currentStyleId = null; }
+                    return;
+                }
+
+                if (val !== null) {
+                    const applyProp = (prop, value) => {
+                        if (currentElement) currentElement.style[prop] = value;
+                        if (currentStyleId) styles[currentStyleId][prop] = value;
+                    };
+
+                    const cleanVal = formatLMTHText(val);
+
+                    if (l.includes("set text to") && currentElement) {
+                        if (currentElement.tagName === "INPUT") currentElement.placeholder = cleanVal;
+                        else currentElement.innerHTML = cleanVal;
+                    }
+                    else if (l.includes("set font size to")) applyProp('fontSize', cleanVal);
+                    else if (l.includes("set font to")) applyProp('fontFamily', cleanVal);
+                    else if (l.includes("set color to")) applyProp('color', cleanVal);
+                    else if (l.includes("set background color to")) applyProp('backgroundColor', cleanVal);
+                    else if (l.includes("set corners to")) applyProp('borderRadius', cleanVal);
+                    else if (l.includes("set border to")) applyProp('border', cleanVal);
+                    else if (l.includes("set page color to")) targetArea.parentElement.style.backgroundColor = cleanVal;
+                    else if (l.includes("set page title to")) document.title = cleanVal;
+                    else if (l.includes("set page icon to")) {
+                        let link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+                        link.rel = 'icon'; link.href = cleanVal; document.head.appendChild(link);
+                    }
+                    else if (l.includes("set width to")) applyProp('width', cleanVal);
+                    else if (l.includes("set height to")) applyProp('height', cleanVal);
+                    else if (l.includes("set alignment to")) {
+                        applyProp('textAlign', cleanVal);
+                        if (cleanVal === "center") { applyProp('marginLeft', 'auto'); applyProp('marginRight', 'auto'); }
+                        else { applyProp('marginLeft', '0'); applyProp('marginRight', '0'); }
+                    }
+                    else if (l.includes("set style to") && currentElement) {
+                        if (styles[cleanVal]) Object.assign(currentElement.style, styles[cleanVal]);
+                    }
+                    else if (l.includes("set link to") && currentElement) {
+                        if (currentElement.tagName === "IMG") currentElement.src = cleanVal;
+                        else { currentElement.style.cursor = "pointer"; currentElement.onclick = () => window.open(cleanVal, '_blank'); }
+                    }
+                }
+            });
+        }
+
+        exportBtn.onclick = () => {
+            const userCode = input.value.replace(/`/g, "\\`").replace(/\$/g, "\\$");
+            const htmlTemplate = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>LMTH Page</title></head><body><div id="render-area"></div><script>const variables = {}; const formatLMTHText = ${formatLMTHText.toString()};const renderLMTH = ${renderLMTH.toString()};const lmthCode = \`${userCode}\`;renderLMTH(lmthCode, document.getElementById('render-area'));<\/script></body></html>`;
+            const blob = new Blob([htmlTemplate], { type: "text/html" });
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "index.html"; a.click();
+        };
+
+        input.onkeydown = function(e) { if(e.key==='Tab'){ e.preventDefault(); let s=this.selectionStart; this.value=this.value.substring(0,s)+"    "+this.value.substring(this.selectionEnd); this.selectionStart=this.selectionEnd=s+4; applyHighlight(this.value); renderLMTH(input.value, renderArea); } };
+        input.oninput = () => { applyHighlight(input.value); renderLMTH(input.value, renderArea); };
+        input.onscroll = () => { highlight.scrollTop = input.scrollTop; highlight.scrollLeft = input.scrollLeft; };
+    </script>
+</body>
+</html>

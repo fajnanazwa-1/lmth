@@ -1,0 +1,140 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>LMTH Page</title></head><body><div id="render-area"></div><script>const variables = {}; const formatLMTHText = function formatLMTHText(text) {
+            if (!text) return "";
+            
+            // 1. Wstawianie wartości z Inputów
+            let processed = text.replace(/\(\(value of input id (.*?)\)\)/g, (match, id) => {
+                let el = document.getElementById(id.trim());
+                return el ? el.value : "";
+            });
+
+            // 2. Wstawianie zmiennych
+            processed = processed.replace(/\(\(variable (.*?)\)\)/g, (match, name) => {
+                return variables[name.trim()] !== undefined ? variables[name.trim()] : match;
+            });
+
+            // 3. Tagi formatujące
+            let formatted = processed.replace(/(\/n|\/b|\/i|\/r|\/0)\s/g, "$1");
+            return formatted.split('/n').join('<br>').split('/b').join('<b>').split('/i').join('<i>').split('/r').join('</b></i>').split('/0').join('&#8203;');
+        };const renderLMTH = function renderLMTH(code, targetArea) {
+            targetArea.innerHTML = ""; 
+            targetArea.parentElement.style.backgroundColor = "";
+            const lines = code.split('\n');
+            let currentElement = null, currentStyleId = null, styles = {}; 
+
+            lines.forEach(line => {
+                const l = line.trim();
+                if (!l || l.startsWith("#")) return;
+
+                const getBracketsContent = (str) => {
+                    const f = str.indexOf('('), la = str.lastIndexOf(')');
+                    return (f !== -1 && la !== -1) ? str.substring(f + 1, la) : null;
+                };
+
+                const val = getBracketsContent(l);
+
+                if (l.startsWith("create new variable")) {
+                    if (!val || !val.includes("=")) return;
+                    const name = val.split('=')[1].trim();
+                    if (variables[name] === undefined) variables[name] = "";
+                    return;
+                }
+
+                if (l.startsWith("set variable")) {
+                    const parts = l.split('to');
+                    if (parts.length < 2) return;
+                    const varName = parts[0].replace('set variable', '').trim();
+                    if (val !== null) variables[varName] = formatLMTHText(val);
+                    return;
+                }
+
+                if (l.startsWith("create new")) {
+                    if (!val || !val.includes("=")) return;
+                    const id = val.split('=')[1].trim();
+                    if (l.startsWith("create new style")) {
+                        styles[id] = {}; currentStyleId = id; currentElement = null;
+                    } else {
+                        let el;
+                        if (l.includes("button")) el = document.createElement('button');
+                        else if (l.includes("text")) el = document.createElement('span');
+                        else if (l.includes("input")) {
+                            el = document.createElement('input');
+                            // Reaguj na pisanie w czasie rzeczywistym
+                            el.oninput = () => { renderLMTH(input.value, renderArea); };
+                        }
+                        else if (l.includes("image")) el = document.createElement('img');
+                        if (el) {
+                            el.id = id; el.style.display = "block"; el.style.marginBottom = "5px";
+                            targetArea.appendChild(el); currentStyleId = null; currentElement = el;
+                        }
+                    }
+                    return;
+                }
+
+                if (l.startsWith("id")) {
+                    if (!val) return;
+                    const name = val.trim();
+                    if (styles[name]) { currentStyleId = name; currentElement = null; }
+                    else { currentElement = document.getElementById(name); currentStyleId = null; }
+                    return;
+                }
+
+                if (val !== null) {
+                    const applyProp = (prop, value) => {
+                        if (currentElement) currentElement.style[prop] = value;
+                        if (currentStyleId) styles[currentStyleId][prop] = value;
+                    };
+
+                    const cleanVal = formatLMTHText(val);
+
+                    if (l.includes("set text to") && currentElement) {
+                        if (currentElement.tagName === "INPUT") currentElement.placeholder = cleanVal;
+                        else currentElement.innerHTML = cleanVal;
+                    }
+                    else if (l.includes("set font size to")) applyProp('fontSize', cleanVal);
+                    else if (l.includes("set font to")) applyProp('fontFamily', cleanVal);
+                    else if (l.includes("set color to")) applyProp('color', cleanVal);
+                    else if (l.includes("set background color to")) applyProp('backgroundColor', cleanVal);
+                    else if (l.includes("set corners to")) applyProp('borderRadius', cleanVal);
+                    else if (l.includes("set border to")) applyProp('border', cleanVal);
+                    else if (l.includes("set page color to")) targetArea.parentElement.style.backgroundColor = cleanVal;
+                    else if (l.includes("set page title to")) document.title = cleanVal;
+                    else if (l.includes("set page icon to")) {
+                        let link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+                        link.rel = 'icon'; link.href = cleanVal; document.head.appendChild(link);
+                    }
+                    else if (l.includes("set width to")) applyProp('width', cleanVal);
+                    else if (l.includes("set height to")) applyProp('height', cleanVal);
+                    else if (l.includes("set alignment to")) {
+                        applyProp('textAlign', cleanVal);
+                        if (cleanVal === "center") { applyProp('marginLeft', 'auto'); applyProp('marginRight', 'auto'); }
+                        else { applyProp('marginLeft', '0'); applyProp('marginRight', '0'); }
+                    }
+                    else if (l.includes("set style to") && currentElement) {
+                        if (styles[cleanVal]) Object.assign(currentElement.style, styles[cleanVal]);
+                    }
+                    else if (l.includes("set link to") && currentElement) {
+                        if (currentElement.tagName === "IMG") currentElement.src = cleanVal;
+                        else { currentElement.style.cursor = "pointer"; currentElement.onclick = () => window.open(cleanVal, '_blank'); }
+                    }
+                }
+            });
+        };const lmthCode = `set page title to (LMTH language page)
+
+create new text (id = editor)
+create new text (id = wiki)
+create new style (id = text)
+
+id (text)
+    set font size to (50px)
+    set color to (blue)
+    set font to (Arial)
+
+id (editor)
+    set text to (Go to editor >)
+    set link to (editor.html)
+    set style to (text)
+
+id (wiki)
+    set text to (Go to wiki >)
+    set link to (wiki.html)
+    set style to (text)`;renderLMTH(lmthCode, document.getElementById('render-area'));</script></body></html>
