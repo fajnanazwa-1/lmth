@@ -118,23 +118,46 @@
                     }
                 }
             });
-        };const lmthCode = `set page title to (LMTH language page)
+        };const lmthCode = `create new text (id = n1)
+create new text (id = a1)
+create new text (id = hr)
+create new text (id = links1)
+create new text (id = links2)
 
-create new text (id = editor)
-create new text (id = wiki)
-create new style (id = text)
+create new style (id = links)
 
-id (text)
-    set font size to (50px)
+
+id (links)
+    set font to (Arial)
+    set font size to (25px)
     set color to (blue)
+
+
+id (n1)
+    set text to (Welcome in the LMTH programming language page! /n __________________________________)
+    set alignment to (center)
+    set font size to (40px)
     set font to (Arial)
 
-id (editor)
-    set text to (Go to editor >)
-    set link to (editor.html)
-    set style to (text)
+id (a1)
+    set text to (About: /n I made this language because I thought other ones were… kind of difficult? I simply decided that in this language, the code should have the same meaning as what it actually does. Did I succeed?; I created this language using Google’s Gemini, because I think it’s the best AI that exists so far.)
+    set alignment to (left)
+    set font size to (20px)
+    set font to (Arial)
 
-id (wiki)
-    set text to (Go to wiki >)
+id (hr)
+    set text to (__________________________________/n /0)
+    set alignment to (center)
+    set font size to (40px)
+
+id (links1)
+    set text to (Go to editor ➩)
+    set link to (editor.html)
+    set style to (links)
+
+id (links2)
+    set text to (Go to wiki ➩)
     set link to (wiki.html)
-    set style to (text)`;renderLMTH(lmthCode, document.getElementById('render-area'));</script></body></html>
+    set style to (links)
+    
+`;renderLMTH(lmthCode, document.getElementById('render-area'));</script></body></html>
